@@ -47,13 +47,10 @@ static inline void trim(string &s) {
 
 // ---------- Parse ints from a JSON-like substring (very targeted) ----------
 long long parse_small_int_after_key(const string &s, size_t pos_key) {
-    // find ':' after pos_key
     size_t p = s.find(':', pos_key);
     if (p == string::npos) throw runtime_error("invalid json structure (int)");
     ++p;
-    // skip spaces
     while (p < s.size() && isspace((unsigned char)s[p])) ++p;
-    // read number (may be multi-digit)
     size_t q = p;
     while (q < s.size() && (s[q] == '-' || isdigit((unsigned char)s[q]))) ++q;
     string num = s.substr(p, q - p);
@@ -66,7 +63,6 @@ string parse_quoted_after_key(const string &s, size_t pos_key) {
     size_t p = s.find(':', pos_key);
     if (p == string::npos) throw runtime_error("invalid json structure (str)");
     p++;
-    // find first quote
     size_t q = s.find('"', p);
     if (q == string::npos) throw runtime_error("invalid json: missing opening quote");
     size_t r = s.find('"', q + 1);
@@ -84,16 +80,14 @@ cpp_int parse_in_base_cpp(const string &s_raw, int base) {
         else if (ch >= 'a' && ch <= 'z') d = ch - 'a' + 10;
         else if (ch >= 'A' && ch <= 'Z') d = ch - 'A' + 10;
         else throw runtime_error(string("invalid digit: ") + ch);
-        if (d < 0 || d >= base) {
-            throw runtime_error("digit >= base in parse_in_base_cpp");
-        }
+        if (d < 0 || d >= base) throw runtime_error("digit >= base in parse_in_base_cpp");
         val *= base;
         val += d;
     }
     return val;
 }
 
-// ---------- Extract JSON objects from input string (top-level objects) ----------
+// ---------- Extract JSON objects from input string ----------
 vector<string> split_json_objects(const string &input) {
     vector<string> objs;
     int depth = 0;
@@ -111,14 +105,12 @@ vector<string> split_json_objects(const string &input) {
             }
         }
     }
-    // If input is a single object without array brackets, objs holds it.
     return objs;
 }
 
-// ---------- Solve Vandermonde via Gaussian elimination with Fractions ----------
+// ---------- Solve Vandermonde via Gaussian elimination ----------
 bool interpolate_and_check(const vector<int> &xs, const vector<cpp_int> &ys, vector<Frac> &out_coeff) {
     int k = xs.size();
-    // Build augmented matrix A of size k x (k+1)
     vector<vector<Frac>> A(k, vector<Frac>(k + 1, Frac(0, 1)));
     for (int i = 0; i < k; ++i) {
         cpp_int power = 1;
@@ -129,21 +121,17 @@ bool interpolate_and_check(const vector<int> &xs, const vector<cpp_int> &ys, vec
         A[i][k] = Frac(ys[i], 1);
     }
 
-    // Gaussian elimination
     for (int col = 0, row = 0; col < k && row < k; ++col, ++row) {
-        // find pivot
         int sel = row;
         for (int r = row; r < k; ++r) {
             if (A[r][col].num != 0) { sel = r; break; }
         }
-        if (A[sel][col].num == 0) return false; // singular for this column
+        if (A[sel][col].num == 0) return false;
         if (sel != row) swap(A[sel], A[row]);
 
-        // normalize pivot row
         Frac pivot = A[row][col];
         for (int c = col; c <= k; ++c) A[row][c] = A[row][c] / pivot;
 
-        // eliminate other rows
         for (int r = 0; r < k; ++r) {
             if (r == row) continue;
             Frac factor = A[r][col];
@@ -154,30 +142,24 @@ bool interpolate_and_check(const vector<int> &xs, const vector<cpp_int> &ys, vec
         }
     }
 
-    // Collect solution (should be diagonalized)
     out_coeff.assign(k, Frac(0, 1));
-    for (int i = 0; i < k; ++i) {
-        out_coeff[i] = A[i][k];
-    }
+    for (int i = 0; i < k; ++i) out_coeff[i] = A[i][k];
 
-    // ensure all coefficients are integer and strictly positive
+    // 🔴 FIX: allow negative or zero coefficients
     for (int i = 0; i < k; ++i) {
         if (!out_coeff[i].isInteger()) return false;
-        if (out_coeff[i].num <= 0) return false;
     }
     return true;
 }
 
-// ---------- Iterate combinations (choose k of n) and find valid polynomial ----------
+// ---------- Iterate combinations ----------
 bool find_valid_constant(const vector<int> &xs_full, const vector<cpp_int> &ys_full, int k, cpp_int &constant_out) {
     int n = (int)xs_full.size();
     if (k > n) return false;
 
-    // generate index vector 0..n-1
     vector<int> choose(n, 0);
     for (int i = 0; i < k; ++i) choose[i] = 1;
-    // we'll use prev_permutation to generate combinations
-    sort(choose.begin(), choose.end(), greater<int>()); // start with k ones at left
+    sort(choose.begin(), choose.end(), greater<int>());
 
     do {
         vector<int> xs;
@@ -187,21 +169,19 @@ bool find_valid_constant(const vector<int> &xs_full, const vector<cpp_int> &ys_f
         vector<Frac> coeffs;
         bool ok = interpolate_and_check(xs, ys, coeffs);
         if (ok) {
-            // coeffs[0] is constant
-            constant_out = coeffs[0].num; // den == 1 ensured
+            constant_out = coeffs[0].num;
             return true;
         }
     } while (prev_permutation(choose.begin(), choose.end()));
     return false;
 }
 
-// ---------- Helper: find substring key "\"n\"" etc. ----------
 size_t find_key(const string &s, const string &key, size_t startpos = 0) {
     return s.find(key, startpos);
 }
 
 string cpp_int_to_string(const cpp_int &v) {
-    std::string s;
+    string s;
     cpp_int t = v;
     if (t == 0) return "0";
     bool neg = false;
@@ -216,9 +196,8 @@ string cpp_int_to_string(const cpp_int &v) {
     return s;
 }
 
-// ---------- Parse one JSON object string with expected format ----------
+// ---------- Parse one JSON ----------
 bool solve_one_json_string(const string &obj_str, string &out_constant_str) {
-    // find keys.n and keys.k
     size_t pos_keys = obj_str.find("\"keys\"");
     if (pos_keys == string::npos) return false;
     size_t pos_n = obj_str.find("\"n\"", pos_keys);
@@ -232,24 +211,17 @@ bool solve_one_json_string(const string &obj_str, string &out_constant_str) {
     vector<cpp_int> ys;
     xs.reserve(n); ys.reserve(n);
 
-    // For each index 1..n, find entry
     for (long long idx = 1; idx <= n; ++idx) {
         string key = "\"" + to_string(idx) + "\"";
         size_t pos = obj_str.find(key);
-        if (pos == string::npos) {
-            // It's allowed (some inputs omitted some numbers), but per spec usually present
-            continue;
-        }
-        // find base after this pos
+        if (pos == string::npos) continue;
         size_t pos_base_key = obj_str.find("\"base\"", pos);
         if (pos_base_key == string::npos) return false;
         string base_str = parse_quoted_after_key(obj_str, pos_base_key);
-        // base may be provided as numeric string ("10") or as number; handle both:
         int base = 10;
         try {
             base = stoi(base_str);
         } catch (...) {
-            // maybe base is unquoted number: attempt to parse number after colon
             size_t colon = obj_str.find(':', pos_base_key);
             if (colon == string::npos) return false;
             size_t p = colon + 1; while (p < obj_str.size() && isspace((unsigned char)obj_str[p])) ++p;
@@ -258,7 +230,6 @@ bool solve_one_json_string(const string &obj_str, string &out_constant_str) {
             trim(num);
             base = stoi(num);
         }
-        // find value
         size_t pos_val_key = obj_str.find("\"value\"", pos);
         if (pos_val_key == string::npos) return false;
         string val = parse_quoted_after_key(obj_str, pos_val_key);
@@ -268,7 +239,6 @@ bool solve_one_json_string(const string &obj_str, string &out_constant_str) {
         ys.push_back(y);
     }
 
-    // If fewer than k points parsed, can't solve
     if ((int)xs.size() < k) return false;
 
     cpp_int constant;
@@ -283,10 +253,9 @@ int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
 
-    // Read whole stdin
     string input;
     {
-        std::ostringstream ss;
+        ostringstream ss;
         ss << cin.rdbuf();
         input = ss.str();
     }
@@ -295,7 +264,6 @@ int main() {
         return 1;
     }
 
-    // If input starts with '[' treat it as array (we'll still split top-level objects)
     vector<string> objects = split_json_objects(input);
     if (objects.empty()) {
         cerr << "No JSON objects found in input\n";
@@ -310,7 +278,6 @@ int main() {
             cout << cstr << "\n";
             anyPrinted = true;
         } else {
-            // If not solvable, print an error marker (or blank). We'll print "ERROR" to indicate fail.
             cout << "ERROR\n";
         }
     }
